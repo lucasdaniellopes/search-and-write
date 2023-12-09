@@ -39,6 +39,9 @@ def find_spreadsheets_in_folder(folder_id):
     return sheets
 
 try:
+    # Get the value to search for from the user
+    search_value = input("Digite o valor a ser procurado nas planilhas: ")
+
     # Liste as pastas na raiz do Google Drive
     folders_query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
     folders_results = drive_service.files().list(q=folders_query, fields="files(id, name)").execute()
@@ -73,8 +76,8 @@ try:
                         # Converte o conteúdo da célula para DataFrame
                         df = pd.DataFrame(cell_content[1:], columns=cell_content[0])
 
-                        # Filtrar linhas com "XRAY (2)"
-                        filtered_df = df[df.apply(lambda row: "XRAY (2)" in str(row).upper(), axis=1)]
+                        # Filtrar linhas com o valor fornecido pelo usuário
+                        filtered_df = df[df.apply(lambda row: "SSD SATA" in str(row).upper(), axis=1)]
 
                         if not filtered_df.empty:
                             print(f'Dados encontrados na planilha "{sheet_name}":')
