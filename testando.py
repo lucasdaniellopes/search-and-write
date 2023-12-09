@@ -1,8 +1,30 @@
+import time
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 import gspread
 from gspread_dataframe import get_as_dataframe
 import pandas as pd
+
+# Função para realizar a chamada à API com tratamento de taxa limite
+def call_api_with_retry(api_function, *args, **kwargs):
+    max_retries = 3
+    retry_delay_seconds = 5
+
+    for retry_count in range(max_retries):
+        try:
+            result = api_function(*args, **kwargs)
+            return result
+        except Exception as e:
+            # Verifica se o erro é de taxa limite excedida
+            if 'RATE_LIMIT_EXCEEDED' in str(e):
+                print(f'Taxa limite excedida. Tentando novamente em {retry_delay_seconds} segundos...')
+                time.sleep(retry_delay_seconds)
+            else:
+                # Se o erro não for de taxa limite, lança a exceção
+                raise
+
+    # Se atingir o número máximo de tentativas, levanta uma exceção
+    raise Exception(f'Não foi possível realizar a chamada após {max_retries} tentativas.')
 
 # Carregue as credenciais da conta de serviço
 credentials = service_account.Credentials.from_service_account_file(
@@ -16,6 +38,19 @@ drive_service = build('drive', 'v3', credentials=credentials)
 # Conecte-se ao Google Sheets usando gspread
 gc = gspread.service_account(filename='chave-da-conta-de-servico.json')
 
+# Exemplo de chamada à API com tratamento de taxa limite
+try:
+    result = call_api_with_retry(
+        drive_service.files().list,
+        q="'{folder_id}' in parents and trashed=false",
+        fields="files(id, name, mimeType)"
+    )
+
+    # Processar o resultado da chamada
+except Exception as e:
+    print(f'Ocorreu um erro: {e}')
+
+
 def find_spreadsheets_in_folder(folder_id):
     sheets = []
 
@@ -24,6 +59,7 @@ def find_spreadsheets_in_folder(folder_id):
         q=f"'{folder_id}' in parents and trashed=false",
         fields="files(id, name, mimeType)"
     ).execute()
+
 
     files = results.get('files', [])
 
@@ -41,6 +77,10 @@ def find_spreadsheets_in_folder(folder_id):
 try:
     # Get the value to search for from the user
     search_value = input("Digite o valor a ser procurado nas planilhas: ")
+    print(search_value.upper())
+
+    # Solicitar o mês ao usuário
+    target_month = input("Digite o mês a ser procurado (por exemplo, DEZEMBRO): ").upper()
 
     # Liste as pastas na raiz do Google Drive
     folders_query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
@@ -70,18 +110,24 @@ try:
                     try:
                         # Leitura dos dados da planilha usando gspread
                         spreadsheet = gc.open_by_key(sheet_id)
-                        worksheet = spreadsheet.sheet1  # Assumindo que estamos usando a primeira folha
-                        cell_content = worksheet.get_all_values()
 
-                        # Converte o conteúdo da célula para DataFrame
-                        df = pd.DataFrame(cell_content[1:], columns=cell_content[0])
+                        # Processar todas as abas na planilha
+                        for worksheet in spreadsheet.worksheets():
+                            # Verificar se o nome da aba começa com o mês inserido pelo usuário
+                            if worksheet.title.upper().startswith(target_month):
+                                print(f'\nProcurando na aba: {worksheet.title}')
 
-                        # Filtrar linhas com o valor fornecido pelo usuário
-                        filtered_df = df[df.apply(lambda row: "SSD SATA" in str(row).upper(), axis=1)]
+                                cell_content = worksheet.get_all_values()
 
-                        if not filtered_df.empty:
-                            print(f'Dados encontrados na planilha "{sheet_name}":')
-                            print(filtered_df)
+                                # Converte o conteúdo da célula para DataFrame
+                                df = pd.DataFrame(cell_content[1:], columns=cell_content[0])
+
+                                # Filtrar linhas com o valor fornecido pelo usuário
+                                filtered_df = df[df.apply(lambda row: search_value.upper() in str(row).upper(), axis=1)]
+
+                                if not filtered_df.empty:
+                                    print(f'Dados encontrados na planilha "{sheet_name}", aba "{worksheet.title}":')
+                                    print(filtered_df)
 
                     except gspread.exceptions.APIError as e:
                         # Verificar se o erro é 'FAILED_PRECONDITION'
