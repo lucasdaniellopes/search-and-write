@@ -105,7 +105,8 @@ try:
                                     filtered_df['Planilha Pai'] = sheet_name
 
                                     # Atualizando a nova planilha com os dados filtrados
-                                    new_spreadsheet.get_worksheet(0).update([filtered_df.columns.values.tolist()] + filtered_df.values.tolist())
+                                    new_spreadsheet.get_worksheet(0).update([filtered_df.columns.values.tolist()] + filtered_df.values.tolist(), value_input_option='USER_ENTERED', table_range='A:Z')
+
                                     print("Linhas adicionadas à nova planilha.")
                                     time.sleep(1)
 
