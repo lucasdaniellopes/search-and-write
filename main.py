@@ -65,11 +65,11 @@ class PlanilhaSearchApp:
 
     def find_spreadsheets_in_folder(self, drive_service, folder_id):
         sheets = []
-        results = drive_service.files().list(
-            q=f"'{folder_id}' in parents and trashed=false",
-            fields="files(id, name, mimeType)"
-        ).execute()
-
+        results = self.retry_api_call(
+        drive_service.files().list,
+        q=f"'{folder_id}' in parents and trashed=false",
+        fields="files(id, name, mimeType)"
+    ).execute()
         files = results.get('files', [])
 
         for file in files:
