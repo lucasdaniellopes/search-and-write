@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\lucas\OneDrive\Documents\teste python drive\venv"
+VIRTUAL_ENV="C:\Users\lucas\OneDrive\Documents\teste python drive\search-write\search-and-write\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"
