@@ -185,7 +185,7 @@ class PlanilhaSearchApp:
                                         duplicate_columns = df.columns[df.columns.duplicated()].unique()
                                         df.columns = [f'{col}_{i}' if col in duplicate_columns else col for i, col in enumerate(df.columns)]
 
-                                        df['Planilha Origem'] = sheet_name
+                                        df['Planilha Origem'] = sheet_name #salvando nome da pasta
 
                                         filtered_df = df[df.apply(lambda row: any(search_value.upper() in str(cell).upper() for cell in row), axis=1)]
 
