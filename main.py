@@ -235,3 +235,4 @@ class PlanilhaSearchApp:
 if __name__ == "__main__":
     # Executa a aplicação
     app = PlanilhaSearchApp()
+    
