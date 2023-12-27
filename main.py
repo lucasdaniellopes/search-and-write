@@ -1,5 +1,3 @@
-# main.py
-
 from modules.search_logic import SearchLogic
 
 if __name__ == "__main__":
