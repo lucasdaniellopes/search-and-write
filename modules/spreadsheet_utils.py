@@ -1,4 +1,4 @@
-from api_utils import retry_api_call
+from api_utils import APIUtils
 from googleapiclient.discovery import build
 from google.oauth2 import service_account
 
@@ -12,7 +12,7 @@ class SpreadsheetsUtils:
     @staticmethod
     def find_spreadsheets_in_folder(self, drive_service, folder_id):
         sheets = []
-        results = self.retry_api_call(
+        results = APIUtils.retry_api_call(
             drive_service.files().list,
             q=f"'{folder_id}' in parents and trashed=false",
             fields="files(id, name, mimeType)"

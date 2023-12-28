@@ -8,10 +8,10 @@ import tkinter as tk
 
 
 from modules.api_utils import APIUtils
-from modules.spreadsheet_utils import SpreadsheetUtils
+from modules.spreadsheet_utils import SpreadsheetsUtils
 from modules.gui import GUI
 
-class SearchLogic(APIUtils, SpreadsheetUtils, GUI):
+class SearchLogic(APIUtils, SpreadsheetsUtils, GUI):
     def __init__(self):
         super().__init__()
 
