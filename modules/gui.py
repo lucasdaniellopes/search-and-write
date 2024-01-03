@@ -1,10 +1,9 @@
-import time
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 
+
 class GUI:
-    @staticmethod
-    def __init__(self):
+    def __init__(self, search_logic_instance):
         self.root = tk.Tk()
         self.root.title("Pesquisa de Planilhas")
 
@@ -31,13 +30,37 @@ class GUI:
         self.status_display = ttk.Label(self.root, textvariable=self.status_var)
         self.status_display.pack(pady=5)
 
-        self.retry_delay_seconds = 5
-        self.max_wait_time_seconds = 180
-        self.requests_count = 0
-        self.start_time = time.time()
+        self.callbacks = []  # Inicializa a lista de callbacks
+
+        self.search_logic_instance = search_logic_instance
+        self.register_callback(self.start_search)
 
         # Inicia a interface gráfica
         self.create_gui()
+
+    def register_callback(self, callback):
+        self.callbacks.append(callback)
+
+    def notify_callbacks(self, *args, **kwargs):
+        for callback in self.callbacks:
+            callback(*args, **kwargs)
+
+    def start_search(self):
+        if self.search_logic_instance:
+            self.search_logic_instance.start_search()
+    
+    def update_status_var(self, message):
+        # Atualiza a variável de status e a interface gráfica
+        self.status_var.set(message)
+        self.root.update()
+
+    def update_result_text(self, message):
+        # Atualiza a área de resultados e a interface gráfica
+        self.result_text.insert(tk.END, message)
+        self.root.update()
+
+   
+
 
     def create_gui(self):
         # Criação da interface gráfica

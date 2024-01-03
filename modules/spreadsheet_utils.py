@@ -1,16 +1,13 @@
-from api_utils import APIUtils
-from googleapiclient.discovery import build
-from google.oauth2 import service_account
+from modules.api_utils import APIUtils
 
 class SpreadsheetsUtils:
     @staticmethod
-    def share_spreadsheet(self, spreadsheet, email, role='writer'):
+    def share_spreadsheet(spreadsheet, email, role='writer'):
         # Compartilha a planilha com o e-mail fornecido e define o papel (role)
         spreadsheet.share(email, perm_type='user', role=role)
 
-
     @staticmethod
-    def find_spreadsheets_in_folder(self, drive_service, folder_id):
+    def find_spreadsheets_in_folder(drive_service, folder_id):
         sheets = []
         results = APIUtils.retry_api_call(
             drive_service.files().list,

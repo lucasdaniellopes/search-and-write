@@ -1,6 +1,12 @@
 import time
 
 class APIUtils:
+
+    retry_delay_seconds = 5
+    max_wait_time_seconds = 180
+    requests_count = 0
+    start_time = time.time()
+    
     @staticmethod
     def retry_api_call(api_function, *args, **kwargs):
         last_request = None  # Reinicializa a variável
@@ -42,3 +48,4 @@ class APIUtils:
             APIUtils.retry_api_call(last_request['api_function'], *last_request['args'], **last_request['kwargs'])
         else:
             print("Limite de tentativas atingido. Não foi possível realizar a chamada.")
+
