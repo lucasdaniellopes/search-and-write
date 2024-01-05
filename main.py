@@ -120,7 +120,6 @@ class PlanilhaSearchApp:
 
         except Exception as e:
             if 'RATE_LIMIT_EXCEEDED' in str(e) or (hasattr(e, 'code') and e.code == 429):
-                print("ENTROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOU")
                 print(f'Erro: {str(e)}. Aguardando...')
                 self.update_result_text(f'Erro: {str(e)}. Tentando novamente...\n')
 
