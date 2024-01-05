@@ -1,12 +1,10 @@
 import time
 from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
 from google.oauth2 import service_account
 import gspread
 import pandas as pd
 import tkinter as tk
 from tkinter import ttk, scrolledtext
-
 
 class PlanilhaSearchApp:
     def __init__(self):
@@ -42,57 +40,26 @@ class PlanilhaSearchApp:
         self.requests_count = 0
         self.start_time = time.time()
 
+        self.new_spreadsheet = None
+
         # Inicia a interface gráfica
         self.create_gui()
 
-    def retry_api_call(self, api_function, *args, **kwargs):
-        last_request = None  # Reinicializa a variável
-        retry_delay_seconds = 5  # Inicializa o valor de espera
-
-        while self.requests_count < 60:
-            elapsed_time = time.time() - self.start_time
-
-            if elapsed_time >= 60:
-                self.requests_count = 0
-                self.start_time = time.time()
-
-            try:
-                result = api_function(*args, **kwargs)
-                self.requests_count += 1
-                print("QUASE LAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
-                return result
-            except Exception as e:
-                if 'RATE_LIMIT_EXCEEDED' in str(e) or (hasattr(e, 'code') and e.code == 429):
-                    print("ENTROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOU")
-                    print(f'Erro: {str(e)}. Aguardando...')
-
-                    # Aplica espera exponencial antes de reenviar a solicitação
-                    time.sleep(retry_delay_seconds)
-
-                    # Aumenta o tempo de espera exponencial para a próxima tentativa
-                    retry_delay_seconds *= 2
-                    continue
-                else:
-                    print(f'Erro: {str(e)}. Tentando novamente...')
-                    last_request = {'api_function': api_function, 'args': args, 'kwargs': kwargs}
-                    retry_delay_seconds *= 2
-                    continue
-
-        # Se chegou a este ponto, todas as tentativas foram esgotadas
-        # Tentar novamente a última chamada que falhou
-        if last_request:
-            print('Tentando novamente a última chamada que falhou...')
-            self.retry_api_call(last_request['api_function'], *last_request['args'], **last_request['kwargs'])
-        else:
-            print("Limite de tentativas atingido. Não foi possível realizar a chamada.")
+    def api_call(self, api_function, *args, **kwargs):
+        try:
+            result = api_function(*args, **kwargs)
+            return result
+        except Exception:
+            pass
 
     def share_spreadsheet(self, spreadsheet, email, role='writer'):
-        # Compartilha a planilha com o e-mail fornecido e define o papel (role)
         spreadsheet.share(email, perm_type='user', role=role)
 
     def find_spreadsheets_in_folder(self, drive_service, folder_id):
+        if self.stop_search: 
+            return []
         sheets = []
-        results = self.retry_api_call(
+        results = self.api_call(
             drive_service.files().list,
             q=f"'{folder_id}' in parents and trashed=false",
             fields="files(id, name, mimeType)"
@@ -109,29 +76,77 @@ class PlanilhaSearchApp:
         return sheets
 
     def update_status_var(self, message):
-        # Atualiza a variável de status e a interface gráfica
         self.status_var.set(message)
         self.root.update()
 
     def update_result_text(self, message):
-        # Atualiza a área de resultados e a interface gráfica
         self.result_text.insert(tk.END, message)
+        self.result_text.see(tk.END)
         self.root.update()
 
+    def handle_rate_limit_exception(self, sheet_id, target_month, search_value, gc, drive_service, retry_delay_seconds):
+        try:
+            spreadsheet = gc.open_by_key(sheet_id)
+
+            for worksheet in spreadsheet.worksheets():
+                if worksheet.title.upper().startswith(target_month):
+                    sheet_name = worksheet.title
+                    cell_content = worksheet.get_all_values()
+                    df = pd.DataFrame(cell_content[1:], columns=cell_content[0])
+                    duplicate_columns = df.columns[df.columns.duplicated()].unique()
+                    df.columns = [f'{col}_{i}' if col in duplicate_columns else col for i, col in enumerate(df.columns)]
+                    df['Planilha Origem'] = sheet_name
+                    filtered_df = df[df.apply(lambda row: any(search_value.upper() in str(cell).upper() for cell in row), axis=1)]
+
+                    if not filtered_df.empty:
+                        if  self.new_spreadsheet is None:
+                            self.update_result_text("Criando nova planilha...\n")
+                            self.update_status_var("Esperando API")
+
+                            self.new_spreadsheet = gc.create(f"Resultados_{search_value}")
+                            self.share_spreadsheet( self.new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
+                            self.update_result_text(f'Link da nova planilha: { self.new_spreadsheet.url}\n')
+                            self.update_status_var("Escrevendo Dados")
+
+                        if not  self.new_spreadsheet.get_worksheet(0).get_all_records():
+                            self.new_spreadsheet.get_worksheet(0).append_rows([['']] * 1)
+                            self.share_spreadsheet( self.new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
+                            self.update_result_text(f'Planilha compartilhada com sucesso.\n')
+                            self.update_status_var("Esperando API")
+
+                        self.new_spreadsheet.get_worksheet(0).append_rows(filtered_df.values.tolist(), value_input_option='USER_ENTERED', table_range='A:Z')
+                        self.update_result_text("Linhas adicionadas à nova planilha.\n")
+                        self.update_status_var("Esperando API")
+
+        except Exception as e:
+            if 'RATE_LIMIT_EXCEEDED' in str(e) or (hasattr(e, 'code') and e.code == 429):
+                print("ENTROOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOOU")
+                print(f'Erro: {str(e)}. Aguardando...')
+                self.update_result_text(f'Erro: {str(e)}. Tentando novamente...\n')
+
+                time.sleep(retry_delay_seconds)
+
+                # Aumenta o tempo de espera para a próxima tentativa
+                retry_delay_seconds *= 2
+
+                # Chama a função novamente com os mesmos argumentos
+                self.handle_rate_limit_exception(sheet_id, target_month, search_value, gc, drive_service, retry_delay_seconds)
+            else:
+                print(f'Erro: {str(e)}. Tentando novamente...\n')
+                self.update_result_text(f'Erro: {str(e)}. Tentando novamente...\n')
+
     def start_search(self):
-        # Função principal para iniciar a pesquisa
+        self.stop_search = False
         search_value = self.search_entry.get()
         target_month = self.month_entry.get().upper()
 
         try:
-            # Limpa a área de resultados e atualiza o status
             self.result_text.delete(1.0, tk.END)
             self.retry_delay_seconds = 5
             self.requests_count = 0
             self.start_time = time.time()
             self.update_status_var("Lendo Dados")
 
-            # Configuração das credenciais para acessar o Google Drive e Google Sheets
             credentials = service_account.Credentials.from_service_account_file(
                 'chave-da-conta-de-servico.json',
                 scopes=['https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/spreadsheets']
@@ -142,13 +157,11 @@ class PlanilhaSearchApp:
 
             new_spreadsheet = None
 
-            # Query para encontrar pastas no Google Drive
             folders_query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
             folders_results = drive_service.files().list(q=folders_query, fields="files(id, name)").execute()
             folders = folders_results.get('files', [])
 
             if not folders:
-                # Nenhuma pasta encontrada
                 self.result_text.insert(tk.END, 'Nenhuma pasta encontrada.\n')
                 self.update_status_var("Finalizado")
             else:
@@ -161,7 +174,6 @@ class PlanilhaSearchApp:
                     sheets = self.find_spreadsheets_in_folder(drive_service, folder_id)
 
                     if not sheets:
-                        # Nenhuma planilha encontrada na pasta
                         self.update_result_text('Nenhuma planilha encontrada na pasta.\n')
                         self.update_status_var("Finalizado")
                     else:
@@ -181,17 +193,13 @@ class PlanilhaSearchApp:
 
                                         cell_content = worksheet.get_all_values()
                                         df = pd.DataFrame(cell_content[1:], columns=cell_content[0])
-
                                         duplicate_columns = df.columns[df.columns.duplicated()].unique()
                                         df.columns = [f'{col}_{i}' if col in duplicate_columns else col for i, col in enumerate(df.columns)]
-
-                                        df['Planilha Origem'] = sheet_name #salvando nome da pasta
-
+                                        df['Planilha Origem'] = sheet_name
                                         filtered_df = df[df.apply(lambda row: any(search_value.upper() in str(cell).upper() for cell in row), axis=1)]
 
                                         if not filtered_df.empty:
                                             if new_spreadsheet is None:
-                                                # Cria uma nova planilha e a compartilha
                                                 self.update_result_text("Criando nova planilha...\n")
                                                 self.update_status_var("Esperando API")
 
@@ -201,38 +209,31 @@ class PlanilhaSearchApp:
                                                 self.update_status_var("Escrevendo Dados")
 
                                             if not new_spreadsheet.get_worksheet(0).get_all_records():
-                                                # Adiciona uma linha vazia à nova planilha e a compartilha novamente
                                                 new_spreadsheet.get_worksheet(0).append_rows([['']] * 1)
                                                 self.share_spreadsheet(new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
                                                 self.update_result_text(f'Planilha compartilhada com sucesso.\n')
                                                 self.update_status_var("Esperando API")
 
-                                            # Adiciona as linhas filtradas à nova planilha
                                             new_spreadsheet.get_worksheet(0).append_rows(filtered_df.values.tolist(), value_input_option='USER_ENTERED', table_range='A:Z')
                                             self.update_result_text("Linhas adicionadas à nova planilha.\n")
                                             self.update_status_var("Esperando API")
 
                             except Exception as e:
-                                self.update_result_text(f'Ocorreu um erro: {e}\n')
-                                self.update_status_var("Finalizado com Erro")
+                                self.handle_rate_limit_exception(sheet_id, target_month, search_value, gc, drive_service, self.retry_delay_seconds)
 
         except Exception as e:
             self.update_result_text(f'Ocorreu um erro: {e}\n')
-            self.update_status_var("Finalizado com Erro")
+            print(f'Erro: {str(e)}. Ocorreu um erro')
+            self.stop_search = True
 
     def create_gui(self):
-        # Criação da interface gráfica
         search_button = ttk.Button(self.root, text="Iniciar Pesquisa", command=self.start_search)
         search_button.pack(pady=10)
 
         stop_button = ttk.Button(self.root, text="Encerrar", command=self.root.destroy)
         stop_button.pack(pady=10)
 
-        # Inicia a interface gráfica
         self.root.mainloop()
 
-
 if __name__ == "__main__":
-    # Executa a aplicação
     app = PlanilhaSearchApp()
-    
