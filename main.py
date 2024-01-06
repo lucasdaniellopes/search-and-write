@@ -41,6 +41,7 @@ class PlanilhaSearchApp:
         self.start_time = time.time()
 
         self.new_spreadsheet = None
+        self.result_dataframe = pd.DataFrame()
 
         # Inicia a interface gráfica
         self.create_gui()
@@ -99,23 +100,17 @@ class PlanilhaSearchApp:
                     filtered_df = df[df.apply(lambda row: any(search_value.upper() in str(cell).upper() for cell in row), axis=1)]
 
                     if not filtered_df.empty:
-                        if  self.new_spreadsheet is None:
+                        if self.new_spreadsheet is None:
                             self.update_result_text("Criando nova planilha...\n")
                             self.update_status_var("Esperando API")
 
                             self.new_spreadsheet = gc.create(f"Resultados_{search_value}")
-                            self.share_spreadsheet( self.new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
-                            self.update_result_text(f'Link da nova planilha: { self.new_spreadsheet.url}\n')
+                            self.share_spreadsheet(self.new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
+                            self.update_result_text(f'Link da nova planilha: {self.new_spreadsheet.url}\n')
                             self.update_status_var("Escrevendo Dados")
 
-                        if not  self.new_spreadsheet.get_worksheet(0).get_all_records():
-                            self.new_spreadsheet.get_worksheet(0).append_rows([['']] * 1)
-                            self.share_spreadsheet( self.new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
-                            self.update_result_text(f'Planilha compartilhada com sucesso.\n')
-                            self.update_status_var("Esperando API")
-
-                        self.new_spreadsheet.get_worksheet(0).append_rows(filtered_df.values.tolist(), value_input_option='USER_ENTERED', table_range='A:Z')
-                        self.update_result_text("Linhas adicionadas à nova planilha.\n")
+                        self.result_dataframe = pd.concat([self.result_dataframe, filtered_df], ignore_index=True)
+                        self.update_result_text("Linhas adicionadas ao DataFrame.\n")
                         self.update_status_var("Esperando API")
 
         except Exception as e:
@@ -153,8 +148,6 @@ class PlanilhaSearchApp:
 
             drive_service = build('drive', 'v3', credentials=credentials)
             gc = gspread.service_account(filename='chave-da-conta-de-servico.json')
-
-            new_spreadsheet = None
 
             folders_query = "mimeType='application/vnd.google-apps.folder' and trashed=false"
             folders_results = drive_service.files().list(q=folders_query, fields="files(id, name)").execute()
@@ -198,27 +191,21 @@ class PlanilhaSearchApp:
                                         filtered_df = df[df.apply(lambda row: any(search_value.upper() in str(cell).upper() for cell in row), axis=1)]
 
                                         if not filtered_df.empty:
-                                            if new_spreadsheet is None:
-                                                self.update_result_text("Criando nova planilha...\n")
-                                                self.update_status_var("Esperando API")
-
-                                                new_spreadsheet = gc.create(f"Resultados_{search_value}")
-                                                self.share_spreadsheet(new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
-                                                self.update_result_text(f'Link da nova planilha: {new_spreadsheet.url}\n')
-                                                self.update_status_var("Escrevendo Dados")
-
-                                            if not new_spreadsheet.get_worksheet(0).get_all_records():
-                                                new_spreadsheet.get_worksheet(0).append_rows([['']] * 1)
-                                                self.share_spreadsheet(new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
-                                                self.update_result_text(f'Planilha compartilhada com sucesso.\n')
-                                                self.update_status_var("Esperando API")
-
-                                            new_spreadsheet.get_worksheet(0).append_rows(filtered_df.values.tolist(), value_input_option='USER_ENTERED', table_range='A:Z')
-                                            self.update_result_text("Linhas adicionadas à nova planilha.\n")
+                                            self.result_dataframe = pd.concat([self.result_dataframe, filtered_df], ignore_index=True)
+                                            self.update_result_text("Linhas adicionadas ao DataFrame.\n")
                                             self.update_status_var("Esperando API")
 
                             except Exception as e:
                                 self.handle_rate_limit_exception(sheet_id, target_month, search_value, gc, drive_service, self.retry_delay_seconds)
+
+            # Após a leitura de todo o drive, adicione o DataFrame à nova planilha
+            if not self.result_dataframe.empty:
+                self.new_spreadsheet = gc.create(f"Resultados_{search_value}")
+                self.share_spreadsheet(self.new_spreadsheet, 'relacionamento@hospitaldayunifip.com.br', role='writer')
+                self.result_dataframe = self.result_dataframe.fillna('')
+                self.new_spreadsheet.get_worksheet(0).append_rows(self.result_dataframe.astype(str).values.tolist(), value_input_option='USER_ENTERED', table_range='A:Z')
+                self.update_result_text("DataFrame adicionado à nova planilha.\n")
+                self.update_status_var("Finalizado")
 
         except Exception as e:
             self.update_result_text(f'Ocorreu um erro: {e}\n')
